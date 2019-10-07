@@ -7,6 +7,8 @@ from nltk.corpus import stopwords
 
 from gensim.models import Word2Vec
 from gensim.models.keyedvectors import KeyedVectors # Zum Laden des Modells
+import pandas as pd
+from sklearn.cluster import OPTICS
 
 # Feed URLs
 # Politik
@@ -40,6 +42,7 @@ for url in feed_urls:
     })
 # print(corpus_array)
 
+
 # Umlaute entfernen, lowercase
 def deUmlaut(value):
   value = value.toLowerCase()
@@ -57,6 +60,7 @@ print('Lade Word2Vec-Modell…')
 model = KeyedVectors.load_word2vec_format('german.model', binary=True)
 print('OK.')
 
+entry_vectors = []
 tokenizer = RegexpTokenizer(r'\w+')
 stopwords = set(stopwords.words('german'))
 for entry_dict in corpus_array:
@@ -69,7 +73,20 @@ for entry_dict in corpus_array:
     if word in model:
       vectors.append(model[word])
 
-  print(vectors)
-  break
+  df_vectors = pd.DataFrame(vectors)
+  # Wortweise Durchschnitt bilden, sodass der ganze Satz einen einzigen "Durchschnitts-Wortvektor" erhält
+  mean_vector = df_vectors.mean(axis=0).values.tolist()
 
+  entry_dict['vector'] = mean_vector
+  entry_vectors.append(mean_vector)
+  # print(entry_dict['vector'])
+
+# Clustering
+# entry_vectors = [[1,2,1], [2,1,2], [10,20,15], [15,20,20], [300,200,250], [200,250,250]]
+clust = OPTICS(min_samples=2, xi=.1)
+labels = clust.fit_predict(entry_vectors)
+print(labels)
+print('Clusterzahl:', max(labels) + 1)
+
+# TODO: Alles in Dataframe, Labels als Spalte dazunehmen
 
