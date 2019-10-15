@@ -23,29 +23,29 @@ feed_urls = [
 
 corpus_array = []
 
-for url in feed_urls:
-  f = feedparser.parse(url)
-  # print('')
-  feed_title = f['feed']['title']
-  # print(feed_title)
-  for entry in f['entries']:
-    entry_title = entry['title']
-    # print(entry_title)
+print('Lade und parse Feed URLs… ', end='')
+try:
+  for url in feed_urls:
+    f = feedparser.parse(url)
+    feed_title = f['feed']['title']
+    for entry in f['entries']:
+      entry_title = entry['title']
+      # HTML-Tags entfernen
+      entry_summary = re.sub('<[^<]+?>', '', entry['summary'])
 
-    entry_summary = re.sub('<[^<]+?>', '', entry['summary'])
-    # print(entry_summary)
-    # print('')
+      corpus_array.append({
+        'feed': feed_title, 
+        'entry': entry_title + ': ' + entry_summary
+      })
+  
+  print('OK.')
+except:
+  print('FAIL.')
 
-    corpus_array.append({
-      'feed': feed_title, 
-      'entry': entry_title + ': ' + entry_summary
-    })
-# print(corpus_array)
-
+df = pd.DataFrame.from_dict(corpus_array)
 
 # Umlaute entfernen, lowercase
 def deUmlaut(value):
-  value = value.toLowerCase()
   value = re.sub('/ä/g', 'ae', value)
   value = re.sub('/ö/g', 'oe', value)
   value = re.sub('/ü/g', 'ue', value)
@@ -56,15 +56,19 @@ def deUmlaut(value):
   return value
 
 # Modell im C BIN-Format laden
-print('Lade Word2Vec-Modell…')
-model = KeyedVectors.load_word2vec_format('german.model', binary=True)
-print('OK.')
+print('Lade Word2Vec-Modell… ', end='')
+try:
+  model = KeyedVectors.load_word2vec_format('german.model', binary=True)
+  print('OK.')
+except:
+  print('FAIL.')
 
 entry_vectors = []
 tokenizer = RegexpTokenizer(r'\w+')
 stopwords = set(stopwords.words('german'))
-for entry_dict in corpus_array:
-  sentence = tokenizer.tokenize(entry_dict['entry'])
+for entry in df['entry']:
+  entry = deUmlaut(entry)
+  sentence = tokenizer.tokenize(entry)
   # Stopwords entfernen
   sentence[:] = (word for word in sentence if word.lower() not in stopwords)
   
@@ -77,16 +81,23 @@ for entry_dict in corpus_array:
   # Wortweise Durchschnitt bilden, sodass der ganze Satz einen einzigen "Durchschnitts-Wortvektor" erhält
   mean_vector = df_vectors.mean(axis=0).values.tolist()
 
-  entry_dict['vector'] = mean_vector
   entry_vectors.append(mean_vector)
-  # print(entry_dict['vector'])
+
+df['vector'] = entry_vectors
 
 # Clustering
-# entry_vectors = [[1,2,1], [2,1,2], [10,20,15], [15,20,20], [300,200,250], [200,250,250]]
-clust = OPTICS(min_samples=2, xi=.1)
+xi = .07
+clust = OPTICS(min_samples=2, xi=xi)
 labels = clust.fit_predict(entry_vectors)
-print(labels)
-print('Clusterzahl:', max(labels) + 1)
+df['label'] = labels
 
-# TODO: Alles in Dataframe, Labels als Spalte dazunehmen
+pd.set_option('display.max_colwidth', -1) # Lange Strings
 
+# Spalten wählen
+df = df.filter(items=['label', 'feed', 'entry'])
+# Unkategorisierte Zeilen weglassen
+df = df[df['label'] >= 0]
+# Sortieren
+df = df.sort_values(by='label')
+
+print(df.to_string())
